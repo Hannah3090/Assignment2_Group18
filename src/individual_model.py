@@ -2,7 +2,7 @@ import gurobipy as gp
 import pandas as pd
 from gurobipy import GRB
 
-from member_model import MemberModel
+from .member_model import MemberModel
 
 class IndividualModel:
 
