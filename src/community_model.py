@@ -82,7 +82,7 @@ class CommunityModel:
 
                 c[f"s_up_{cid}"] = m.addConstrs((self.s[cid][t] <= S_bar for t in T), name=f"s_up_{cid}")
 
-                c[f"s_end_{cid}"] = m.addConstr(self.s[cid][24] >= S_init, name=f"s_end_{cid}")
+                c[f"s_end_{cid}"] = m.addConstr(self.s[cid][24] == S_init, name=f"s_end_{cid}")
       
             PV_bar = member.pv_available
             l_ref = member.reference_load
