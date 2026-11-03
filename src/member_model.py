@@ -133,7 +133,7 @@ class MemberModel:
             c["dis_lo"] = m.addConstrs((-p_dis[t] <= 0 for t in T), name="dis_lo")                   
 
             c["s_lo"] = m.addConstrs((-s[t] <= 0 for t in T), name="s_lo")                 
-            c["s_end"] = m.addConstr(S_init - s[t_end] <= 0, name="s_end")                
+            c["s_end"] = m.addConstr(s[t_end] - S_init == 0, name="s_end")                
 
         else:
             c["bal"] = m.addConstrs((l[t] + p_ex[t] - p_im[t] - p_PV[t] == 0 for t in T), name="bal")
