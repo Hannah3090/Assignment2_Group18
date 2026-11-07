@@ -20,6 +20,7 @@ from src.reference_model import ReferenceModel
 from src.individual_model import IndividualModel
 from src.community_model import CommunityModel
 
+
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 def main() -> None:
@@ -62,6 +63,12 @@ def main() -> None:
     print("Peak import  :", results_ind["peak_import"])
     print("Exceedance   :", results_ind["exceedance"])
     print("Total cost   :", results_ind["total_cost"])
+    print("Tariff discount ratio:", results_ind["tariff_discount_ratio"])
+    print("Penalty rate [DKK/kWh]:", results_ind["penalty_rate"])
+    print("Total penalty paid [DKK]:", round(results_ind["total_penalty"],2))
+
+    penalty_share = (results_ind["total_penalty"] / results_ind["total_cost"])
+    print("Penalty share of total cost [%]:", round(100 * penalty_share,2))
 
     # Community model
     model_com = CommunityModel(com)
@@ -72,11 +79,9 @@ def main() -> None:
     print("Peak import  :", results_com["peak_import"])
     print("Exceedance   :", results_com["exceedance"])
     print("Total cost   :", results_com["total_cost"])
-    print("C            :", results_com["C"])
-    print("D            :", results_com["D"])
-    print("P            :", results_com["P"])
-    print("Lambda_t     :", results_com["lambda_t"])
-    print(settlement)
+    print("Procurment cost            :", results_com["C"])
+    print("Disutility cost            :", results_com["D"])
+    print("Penalty cost               :", results_com["P"])
 
 if __name__ == "__main__":
     main()
