@@ -178,7 +178,7 @@ class CommunityModel:
             "C": self.C.getValue(),
             "D": self.D.getValue(),
             "P": self.P.getValue(),
-            "lambda": lambda_t,
+            "lambda_t": lambda_t,
             "member_net": member_net
         }
     
