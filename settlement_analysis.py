@@ -59,17 +59,21 @@ for cid, value in settlement.items():
 
 # RESULTS FOR REPORTING:
 manager_revenue = sum(settlement.values())
-community_cost = res_C["total_cost"]
+##community_cost = res_C["total_cost"]
+DSO_cost = res_C["C"] + res_C["P"]
 
 comparison = pd.DataFrame({"R": cost_R, "I": cost_I, "C": settlement}).T.T
 
 comparison["Gain_vs_R"] = (comparison["R"] - comparison["C"])
 comparison["Gain_vs_I"] = (comparison["I"] - comparison["C"])
 
+
 print(comparison.round(2))
 print("Manager revenue                      :",manager_revenue)
-print("Community Cost                       :",community_cost)
-print("Manager revenue - Community cost     :",manager_revenue - community_cost)
+#print("Community Cost                       :",community_cost)
+print("Manager DSO cost                       :",DSO_cost)
+#print("Manager revenue - Community cost     :",manager_revenue - community_cost)
+print("Budget balance residual             :", manager_revenue - DSO_cost) # Revenue collected−Cost incurred
 
 # ----------------------- PLOTTING IN THE SAME FILE--------------------------
 
@@ -114,9 +118,9 @@ plt.show()
 
 plt.figure(figsize=(6,4))
 
-labels = ["Settlement\nRevenue", "Community\nCost"]
+labels = ["Settlement\nRevenue", "DSO\nPayments"]
 
-values = [manager_revenue, community_cost]
+values = [manager_revenue, DSO_cost]
 
 plt.bar(labels, values)
 plt.ylabel("DKK")
