@@ -19,69 +19,85 @@ from src.data_loader import load_community, list_communities
 from src.reference_model import ReferenceModel
 from src.individual_model import IndividualModel
 from src.community_model import CommunityModel
+from src.dynamic_pricing_model import DynamicPricingModel 
+
+from src.q1_experiments import run_q1
+from sensitivity_beta import run_beta_sensitivity
+from sensitivity_cap import run_cap_sensitivity
+from src.plotting_q1 import plot_q1_comparison
+
+from src.q2_experiments import prepare_q2_inputs, compute_q1_member_costs, run_q2_base_case
+from src.q2_sensitivity import run_q2_cap_sensitivity
+from src.q2_plotting import plot_q2_prices, plot_q2_net_profile, plot_q2_cap_sensitivity
 
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+
     ap.add_argument("--community", default="base", help=f"base (shipped) or your own params_community_<name>.json; available: {list_communities()}")
     ap.add_argument("--day", default="d1", help="d1 (base case) ... d7")
-    ap.add_argument("--members", action="store_true", help="print the Assignment 1 summary of every member")
-    ap.add_argument("--demo", action="store_true", help="run the scenario-generation demonstration")
+        
+    # Question 1
+    ap.add_argument("--q1-results", action="store_true")
+    ap.add_argument("--q1-plots", action="store_true")
+    ap.add_argument("--q1-sensitivity_beta", action="store_true")
+    ap.add_argument("--q1-sensitivity_cap", action="store_true")
+
+    # Question 2
+    ap.add_argument("--q2-results", action="store_true")
+    ap.add_argument("--q2-plots", action="store_true")
+    ap.add_argument("--q2-sensitivity", action="store_true")
+
     args = ap.parse_args()
 
     com = load_community(args.community, day=args.day)
     print(com.summary(), "\n")
-    if args.members:
-        for m in com.members:
-            print(m.summary(), "\n")
-    print("Cap profile (kW):", " ".join(f"{x:.1f}" for x in com.contract.capacity_limit_kW))
-    ic = com.contract.individual_capacity_limit_kW
-    print("Individual caps in model I (kW), hour 0 / hour 11:",
-          "  ".join(f"{cid} ({com.member(cid).archetype}) {ic[cid][0]:.2f}/{ic[cid][11]:.2f}" for cid in ("C1", "C1_PVB", "C4", "C4_PVB") if cid in com.member_ids))
+    
     (RESULTS_DIR / args.community).mkdir(parents=True, exist_ok=True)
-    if args.demo:
-        import runpy
 
-    # Reference model
-    model_ref = ReferenceModel(com)
-    results_ref = model_ref.solve()
+# Q1 results: 
+    if args.q1_results:
+        results_ref, results_ind, results_com = run_q1(com, verbose=True)
 
-    print("\nREFERENCE MODEL (R)")
-    print("Daily import :", results_ref["daily_import"])
-    print("Peak import  :", results_ref["peak_import"])
-    print("Exceedance   :", results_ref["exceedance"])
-    print("Total cost   :", results_ref["total_cost"])
+# Q1 plots: 
+    if args.q1_plots:
+        results_ref, results_ind, results_com = run_q1(com, verbose=False)
+        plot_q1_comparison(results_ref, results_ind, results_com)
 
-    # Individual model
-    model_ind = IndividualModel(com)
-    results_ind = model_ind.solve()
+ # Q1 sensitivity analysis on beta: 
+    if args.q1_sensitivity_beta:
+        run_beta_sensitivity()
 
-    print("\nINDIVIDUAL MODEL (I)")
-    print("Daily import :", results_ind["daily_import"])
-    print("Peak import  :", results_ind["peak_import"])
-    print("Exceedance   :", results_ind["exceedance"])
-    print("Total cost   :", results_ind["total_cost"])
-    print("Tariff discount ratio:", results_ind["tariff_discount_ratio"])
-    print("Penalty rate [DKK/kWh]:", results_ind["penalty_rate"])
-    print("Total penalty paid [DKK]:", round(results_ind["total_penalty"],2))
+ # Q1 sensitivity analysis on capacity limit: 
+    if args.q1_sensitivity_cap:
+        run_cap_sensitivity()
 
-    penalty_share = (results_ind["total_penalty"] / results_ind["total_cost"])
-    print("Penalty share of total cost [%]:", round(100 * penalty_share,2))
+# Q2 results: 
+    if args.q2_results:
+        members_data, contract_data, day_data = (prepare_q2_inputs(com))
+        _, ind_costs_I = compute_q1_member_costs(com)
+        q2_results = run_q2_base_case(com, members_data, contract_data, day_data, ind_costs_I, verbose=True)
+        # print(q2_results)
 
-    # Community model
-    model_com = CommunityModel(com)
-    results_com = model_com.solve()
+# Q2 plots: 
+    if args.q2_plots:
+        model_com = CommunityModel(com)
+        results_com = model_com.solve()
+        members_data, contract_data, day_data = (prepare_q2_inputs(com))
+        _, ind_costs_I = compute_q1_member_costs(com)
+        q2_results = run_q2_base_case(com, members_data, contract_data, day_data, ind_costs_I, verbose=False)
 
-    print("\nCOMMUNITY MODEL (C)")
-    print("Daily import :", results_com["daily_import"])
-    print("Peak import  :", results_com["peak_import"])
-    print("Exceedance   :", results_com["exceedance"])
-    print("Total cost   :", results_com["total_cost"])
-    print("Procurment cost            :", results_com["C"])
-    print("Disutility cost            :", results_com["D"])
-    print("Penalty cost               :", results_com["P"])
+        plot_q2_prices(results_com, q2_results["prices_cap"], q2_results["prices_bb"], q2_results["prices_ir"], q2_results["prices_bb_ir"], day_data)
+        plot_q2_net_profile(q2_results["res_cap"], q2_results["res_bb"], q2_results["res_ir"], q2_results["res_bb_ir"], contract_data)
+
+# Q2 sensitivity analysis: 
+    if args.q2_sensitivity:
+        members_data, contract_data, day_data = (prepare_q2_inputs(com))
+        sens_records = run_q2_cap_sensitivity(com, members_data, contract_data, day_data)
+
+        plot_q2_cap_sensitivity(sens_records)
 
 if __name__ == "__main__":
     main()
