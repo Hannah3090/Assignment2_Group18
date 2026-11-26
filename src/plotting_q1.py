@@ -5,64 +5,69 @@ from pathlib import Path
 
 Path("figures").mkdir(exist_ok=True)
 
-# Plot 1 (KPI comparison):
+def plot_q1_comparison(results_ref, results_ind, results_com):
 
-models = ["Reference", "Individual", "Community"]
+    models = ["Reference", "Individual", "Community"]
 
-daily_import = [173.386, 167.536, 180.081]
-peak_import = [27.60, 11.08, 9.39]
-exceedance = [66.35, 4.29, 0.00]
-cost = [398.24, 480.67, 372.16]
+    daily_import = [results_ref["daily_import"], results_ind["daily_import"], results_com["daily_import"]]
 
-fig, axs = plt.subplots(2, 2, figsize=(8,6))
+    peak_import = [results_ref["peak_import"], results_ind["peak_import"], results_com["peak_import"]]
+                
+    exceedance = [results_ref["exceedance"], results_ind["exceedance"], results_com["exceedance"]]
 
-bars_imp = axs[0,0].bar(models, daily_import, color="green")
+    cost = [results_ref["total_cost"], results_ind["total_cost"], results_com["total_cost"]]
 
-axs[0,0].set_title("Daily Import")
-axs[0,0].set_ylabel("kWh")
-axs[0,0].set_ylim(0, 200)
+    fig, axs = plt.subplots(2, 2, figsize=(8,6))
 
-for bar in bars_imp:
-    height = bar.get_height()
-    axs[0,0].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
+    bars_imp = axs[0,0].bar(models, daily_import, color="green")
 
-bars_peak = axs[0,1].bar(models, peak_import, color="orange")
+    axs[0,0].set_title("Daily Import")
+    axs[0,0].set_ylabel("kWh")
+    axs[0,0].set_ylim(0, 200)
 
-axs[0,1].set_title("Peak Import")
-axs[0,1].set_ylabel("kWh")
-axs[0,1].set_ylim(0, 200)
+    for bar in bars_imp:
+        height = bar.get_height()
+        axs[0,0].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
 
-for bar in bars_peak:
-    height = bar.get_height()
-    axs[0,1].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
+    bars_peak = axs[0,1].bar(models, peak_import, color="orange")
 
-bars_exc = axs[1,0].bar(models, exceedance, color="red")
+    axs[0,1].set_title("Peak Import")
+    axs[0,1].set_ylabel("kWh")
+    axs[0,1].set_ylim(0, 200)
 
-axs[1,0].set_title("Congestion Exceedance")
-axs[1,0].set_ylabel("kWh")
-axs[1,0].set_ylim(0, 200)
+    for bar in bars_peak:
+        height = bar.get_height()
+        axs[0,1].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
 
-for bar in bars_exc:
-    height = bar.get_height()
+    bars_exc = axs[1,0].bar(models, exceedance, color="red")
 
-    axs[1,0].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
+    axs[1,0].set_title("Congestion Exceedance")
+    axs[1,0].set_ylabel("kWh")
+    axs[1,0].set_ylim(0, 200)
 
-bars_cost = axs[1,1].bar(models, cost, color="blue")   
-axs[1,1].set_ylim(0, 550)
+    for bar in bars_exc:
+        height = bar.get_height()
 
-for bar in bars_cost:
-    height = bar.get_height()
+        axs[1,0].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
 
-    axs[1,1].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
+    bars_cost = axs[1,1].bar(models, cost, color="blue")   
+    axs[1,1].set_ylim(0, 550)
 
-axs[1,1].bar(models, cost)
-axs[1,1].set_title("Total Cost")
-axs[1,1].set_ylabel("DKK")
+    for bar in bars_cost:
+        height = bar.get_height()
 
-plt.tight_layout()
-plt.savefig("figures/comparison_cases.png", dpi=300, bbox_inches="tight")
-plt.show()
+        axs[1,1].text(bar.get_x() + bar.get_width()/2, height + 2, f"{height:.2f}", ha="center", va="bottom")
 
+    axs[1,1].bar(models, cost)
+    axs[1,1].set_title("Total Cost")
+    axs[1,1].set_ylabel("DKK")
+
+    plt.tight_layout()
+    plt.savefig("figures/comparison_cases.png", dpi=300, bbox_inches="tight")
+    print(f"\n[Success] Saved all figures to figures/.")
+    plt.close()
+
+"""
 # Plot 2 (Community Import-export profile with contract cap):
 
 hours = range(1,25)
@@ -106,3 +111,4 @@ plt.ylabel("DKK")
 plt.title("Cost Components of Community Contract")
 plt.savefig("figures/cost_decompositon.png", dpi=300, bbox_inches="tight")
 plt.show()
+"""
