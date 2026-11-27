@@ -41,9 +41,9 @@ def generate_joint_scenarios(members_base, n_joint, seed=42, lo=0.8, hi=1.2, mea
     Generates n_joint joint community scenarios with independent per-member
     profile scaling draws theta_{i,w} in [lo, hi].
     In each scenario:
-      - l_ref_{i,t,w} = theta_{i,w} * l_ref_base_{i,t}
-      - min_daily_energy_{i,w} = sum_t l_ref_{i,t,w}
-      - hourly bounds are clipped around l_ref_{i,t,w} +/- delta_max within [0, L_max]
+    - l_ref_{i,t,w} = theta_{i,w} * l_ref_base_{i,t}
+    - min_daily_energy_{i,w} = sum_t l_ref_{i,t,w}
+    - hourly bounds are clipped around l_ref_{i,t,w} +/- delta_max within [0, L_max]
     """
     rng = np.random.default_rng(seed)
     member_thetas = {}
@@ -147,18 +147,18 @@ class StochasticDynamicPricingModel:
     """
     Parameterized Scenario-Based Stochastic Bilevel MILP (SDP^x) for Question 3.
     Aligned with Question 2 KKT formulation:
-      - First-stage uniform hourly price vector x_t posted day-ahead
-      - Scenario-indexed lower-level primal & dual KKT systems for w in {0, ..., N-1}
-      - Supports Risk-Neutral (risk_weight=0), CVaR tail hedging (risk_weight>0),
-        Expected Budget Balance, Expected/Soft Individual Rationality, and
-        Joint Chance-Constrained Cap Protection (cap_mode='chance').
+    - First-stage uniform hourly price vector x_t posted day-ahead
+    - Scenario-indexed lower-level primal & dual KKT systems for w in {0, ..., N-1}
+    - Supports Risk-Neutral (risk_weight=0), CVaR tail hedging (risk_weight>0),
+      Expected Budget Balance, Expected Individual Rationality, and
+      Joint Chance-Constrained Cap Protection (cap_mode='chance').
     """
     def __init__(self, scenarios, contract_data, day_data,
                  bb_mode='expectation', ir_mode='none',
                  ir_bounds_per_scen=None,
                  risk_weight=0.0, cvar_alpha=0.80,
                  cap_mode='penalty', eps_cap=0.20,
-                 M=100.0, time_limit=25, mip_gap=2e-3):
+                 M=200.0, time_limit=60, mip_gap=1e-3):
         self.scenarios = scenarios
         self.n_scen = len(scenarios)
         self.n_members = len(scenarios[0]['members'])
@@ -178,6 +178,8 @@ class StochasticDynamicPricingModel:
         self.model.setParam('OutputFlag', 0)
         self.model.setParam('TimeLimit', time_limit)
         self.model.setParam('MIPGap', mip_gap)
+        self.model.setParam('MIPFocus', 1)
+        self.model.setParam('Heuristics', 0.25)
 
     def build_model(self):
         m = self.model
@@ -186,7 +188,7 @@ class StochasticDynamicPricingModel:
         n_m = self.n_members
 
         # 1. First-stage uniform hourly prices posted day-ahead
-        x = m.addVars(H, lb=-25.0, ub=25.0, name="x_price")
+        x = m.addVars(H, lb=-50.0, ub=50.0, name="x_price")
 
         # 2. Second-stage grid interface variables per scenario
         P_imp = m.addVars(W, H, lb=0.0, name="P_imp")
@@ -302,11 +304,11 @@ class StochasticDynamicPricingModel:
                         if t == 23:
                             m.addConstr(s[w, i_idx, t] == s_init)
 
-                        # Exact KKT stationarity matching point2.py
-                        m.addConstr(x[t] + eta_ch * lam_soc[t] - mu_ch_min[t] + mu_ch_max[t] == 0)
-                        m.addConstr(-x[t] - (1.0 / eta_dis) * lam_soc[t] - mu_dis_min[t] + mu_dis_max[t] == 0)
+                        # KKT stationarity aligned with point2.py
+                        m.addConstr(x[t] - eta_ch * lam_soc[t] - mu_ch_min[t] + mu_ch_max[t] == 0)
+                        m.addConstr(-x[t] + (1.0 / eta_dis) * lam_soc[t] - mu_dis_min[t] + mu_dis_max[t] == 0)
                         if t < 23:
-                            m.addConstr(-lam_soc[t] + lam_soc[t + 1] - mu_s_min[t] + mu_s_max[t] == 0)
+                            m.addConstr(lam_soc[t] - lam_soc[t + 1] - mu_s_min[t] + mu_s_max[t] == 0)
 
                         m.addConstr(p_ch[w, i_idx, t] <= self.M * z_ch_min[t])
                         m.addConstr(mu_ch_min[t] <= self.M * (1 - z_ch_min[t]))
@@ -323,7 +325,7 @@ class StochasticDynamicPricingModel:
                         m.addConstr(i['s_max'] - s[w, i_idx, t] <= self.M * z_s_max[t])
                         m.addConstr(mu_s_max[t] <= self.M * (1 - z_s_max[t]))
 
-                # Exact dual objective (strong duality = member total cost in scenario w)
+                # Dual objective aligned with point2.py
                 d_wi = (
                     mu_energy * E_min_w
                     + gp.quicksum(
@@ -336,9 +338,9 @@ class StochasticDynamicPricingModel:
                     d_wi -= gp.quicksum(mu_g_max[t] * i['pv_max'][t] for t in H)
                 if i['has_battery']:
                     d_wi += (
-                        (-lam_soc[0] + (lam_soc[23] + mu_s_min[23] - mu_s_max[23])) * i['s_init']
+                        (lam_soc[0] - (lam_soc[23] - mu_s_min[23] + mu_s_max[23])) * i['s_init']
                         + gp.quicksum(
-                            - mu_ch_max[t] * i['p_ch_max'] - mu_dis_max[t] * i['p_dis_max']
+                            -mu_ch_max[t] * i['p_ch_max'] - mu_dis_max[t] * i['p_dis_max']
                             + mu_s_min[t] * i['s_min'] - mu_s_max[t] * i['s_max']
                             for t in H
                         )
@@ -356,8 +358,8 @@ class StochasticDynamicPricingModel:
                 m.addConstr(E_exc[w, t] >= P_imp[w, t] - self.contract['cap'][t])
 
             if self.cap_mode == 'chance':
-                # If y_viol[w] == 0, daily cap exceedance must be 0
-                m.addConstr(gp.quicksum(E_exc[w, t] for t in H) <= 80.0 * y_viol[w])
+                # Big-M bound for daily exceedance when y_viol[w] == 1
+                m.addConstr(gp.quicksum(E_exc[w, t] for t in H) <= self.M * y_viol[w])
 
             dso_w = gp.quicksum(
                 self.day['p_da'][t] * (P_imp[w, t] - P_exp[w, t])
@@ -377,20 +379,22 @@ class StochasticDynamicPricingModel:
             # CVaR epigraph constraint per scenario
             m.addConstr(u_cvar[w] >= scen_total_cost[w] - eta_cvar)
 
-        # 4. Expected Budget Balance & Individual Rationality constraints
+        # 4. Expected Budget Balance & Individual Rationality with practical tolerance
         if self.bb_mode == 'expectation':
             exp_rev = gp.quicksum(
                 self.scenarios[w]['prob'] * gp.quicksum(scen_member_bill[w, i_idx] for i_idx in range(n_m))
                 for w in W
             )
             exp_dso = gp.quicksum(self.scenarios[w]['prob'] * scen_dso_cost[w] for w in W)
-            m.addConstr(exp_rev == exp_dso, name="Expected_BudgetBalance")
+            bb_tol = 0.25
+            m.addConstr(exp_rev - exp_dso <= bb_tol, name="Expected_BudgetBalance_UB")
+            m.addConstr(exp_rev - exp_dso >= -bb_tol, name="Expected_BudgetBalance_LB")
 
         if self.ir_mode == 'expectation' and self.ir_bounds_per_scen is not None:
             for i_idx in range(n_m):
                 exp_m_cost = gp.quicksum(self.scenarios[w]['prob'] * scen_member_total_cost[w, i_idx] for w in W)
                 exp_ir_bound = sum(self.scenarios[w]['prob'] * self.ir_bounds_per_scen[w][i_idx] for w in W)
-                m.addConstr(exp_m_cost <= exp_ir_bound, name=f"Expected_IR_{i_idx}")
+                m.addConstr(exp_m_cost <= exp_ir_bound + 0.25, name=f"Expected_IR_{i_idx}")
 
         if self.cap_mode == 'chance':
             m.addConstr(
@@ -411,8 +415,8 @@ class StochasticDynamicPricingModel:
         elapsed = time.perf_counter() - t0
         if self.model.status in [GRB.OPTIMAL, GRB.TIME_LIMIT] and self.model.SolCount > 0:
             prices = [self.model.getVarByName(f"x_price[{t}]").X for t in self.hours]
-            return prices, float(self.model.ObjVal), elapsed
-        return None, None, elapsed
+            return prices, float(self.model.ObjVal), elapsed, self.model.status
+        return None, None, elapsed, self.model.status
 
 
 def evaluate_prices_on_scenarios(posted_prices, scenarios, contract_data, day_data, ir_bounds_per_scen=None):
@@ -592,7 +596,7 @@ def main():
     # 1. Generate reproducible In-Sample and Out-of-Sample scenario sets (Table 10 base hyper-parameters)
     SEED_INSAMPLE = 101
     SEED_OOS = 999
-    N_BASE = 5
+    N_BASE = 4
     N_OOS = 100
 
     print(f"\nGenerating scenarios (lo=0.8, hi=1.2, mean=1.0, kappa=2.0 | in-sample N={N_BASE}, seed={SEED_INSAMPLE} | out-of-sample N={N_OOS}, seed={SEED_OOS})...")
@@ -624,9 +628,10 @@ def main():
     for label, sc_train, ir_train, kwargs in models_cfg:
         sdp = StochasticDynamicPricingModel(sc_train, contract_data, day_data, ir_bounds_per_scen=ir_train, **kwargs)
         sdp.build_model()
-        prices, obj_in, solve_t = sdp.solve()
+        prices, obj_in, solve_t, st = sdp.solve()
         if prices is None:
-            print(f"{label:<24} | {'Infeasible':<100}")
+            status_txt = "Infeasible" if st == GRB.INFEASIBLE else f"NoSol(status={st})"
+            print(f"{label:<24} | {status_txt:<100}")
             continue
 
         ev_oos = evaluate_prices_on_scenarios(prices, scen_oos, contract_data, day_data, ir_oos)
@@ -642,16 +647,16 @@ def main():
     print(f"{'N (Scenarios)':<14} | {'In-Sample Obj':<14} | {'OOS Mean':<10} | {'Optimism Gap':<13} | {'OOS CVaR90':<11} | {'CapViol%':<9} | {'Solve Time(s)':<13}")
     print("-" * 98)
 
-    n_sweep = [1, 3, 5, 8, 10]
+    n_sweep = [1, 2, 3, 4]
     conv_records = []
     for n_val in n_sweep:
         sc_sub = [dict(s) for s in scen_in_full[:n_val]]
         for s_item in sc_sub:
             s_item['prob'] = 1.0 / n_val
 
-        sdp_n = StochasticDynamicPricingModel(sc_sub, contract_data, day_data, bb_mode='expectation', ir_mode='none', risk_weight=0.0, time_limit=30)
+        sdp_n = StochasticDynamicPricingModel(sc_sub, contract_data, day_data, bb_mode='expectation', ir_mode='none', risk_weight=0.0, time_limit=60)
         sdp_n.build_model()
-        pr_n, obj_in_n, t_n = sdp_n.solve()
+        pr_n, obj_in_n, t_n, _ = sdp_n.solve()
         if pr_n is not None:
             ev_oos_n = evaluate_prices_on_scenarios(pr_n, scen_oos, contract_data, day_data, ir_oos)
             gap = ev_oos_n['mean_cost'] - obj_in_n
@@ -660,21 +665,35 @@ def main():
             conv_records.append((n_val, obj_in_n, ev_oos_n['mean_cost'], t_n))
 
     # 4. Study 2: Sensitivity across Risk-Aversion Parameter lambda in SDP_CVaR
-    print("\n=== Study 2: Sensitivity on Risk-Aversion Weight lambda (SDP_CVaR, N=5) ===")
+    print(f"\n=== Study 2: Sensitivity on Risk-Aversion Weight lambda (SDP_CVaR, N={N_BASE}) ===")
     print(f"{'lambda':<8} | {'OOS Mean (DKK)':<15} | {'OOS CVaR90 (DKK)':<17} | {'OOS Max (DKK)':<14} | {'CapViol%':<9} | {'AvgExc (kWh)':<12}")
     print("-" * 85)
 
     lambdas = [0.0, 0.25, 0.50, 0.75, 1.0]
     frontier_records = []
     for lam in lambdas:
-        sdp_l = StochasticDynamicPricingModel(scen_in_base, contract_data, day_data, bb_mode='expectation', ir_mode='none', risk_weight=lam, cvar_alpha=0.80, time_limit=25)
+        sdp_l = StochasticDynamicPricingModel(
+            scen_in_base,
+            contract_data,
+            day_data,
+            bb_mode='expectation',
+            ir_mode='none',
+            risk_weight=lam,
+            cvar_alpha=0.80,
+            time_limit=90,
+        )
         sdp_l.build_model()
-        pr_l, _, _ = sdp_l.solve()
+        pr_l, _, _, st_l = sdp_l.solve()
         if pr_l is not None:
             ev_oos_l = evaluate_prices_on_scenarios(pr_l, scen_oos, contract_data, day_data, ir_oos)
-            print(f"{lam:<8.2f} | {ev_oos_l['mean_cost']:<15.2f} | {ev_oos_l['cvar90_cost']:<17.2f} | {ev_oos_l['max_cost']:<14.2f} | "
-                  f"{ev_oos_l['cap_viol_prob']:>7.1f}% | {ev_oos_l['mean_exc_kwh']:<12.2f}")
+            print(
+                f"{lam:<8.2f} | {ev_oos_l['mean_cost']:<15.2f} | {ev_oos_l['cvar90_cost']:<17.2f} | "
+                f"{ev_oos_l['max_cost']:<14.2f} | {ev_oos_l['cap_viol_prob']:>7.1f}% | {ev_oos_l['mean_exc_kwh']:<12.2f}"
+            )
             frontier_records.append((lam, ev_oos_l['mean_cost'], ev_oos_l['cvar90_cost'], ev_oos_l['mean_exc_kwh']))
+        else:
+            status_l = "Infeasible" if st_l == GRB.INFEASIBLE else f"NoSol(status={st_l})"
+            print(f"{lam:<8.2f} | {status_l:<70}")
 
     # 5. Generate Table-13 Compliant Figures in figures/
     fig_dir = (project_root / "figures") if project_root is not None else Path("figures")
